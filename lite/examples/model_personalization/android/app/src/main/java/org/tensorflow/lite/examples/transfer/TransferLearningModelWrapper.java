@@ -95,4 +95,8 @@ public class TransferLearningModelWrapper implements Closeable {
   public void close() {
     model.close();
   }
+
+  public boolean uint8Model() {
+    return this.model.uint8Model();
+  }
 }

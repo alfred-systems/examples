@@ -15,6 +15,10 @@ limitations under the License.
 
 package org.tensorflow.lite.examples.transfer.api;
 
+import org.tensorflow.lite.DataType;
+import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
+
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -56,6 +60,45 @@ class LiteInferenceModel implements Closeable {
     }
 
     return predictions;
+  }
+
+  ByteBuffer runInference(ByteBuffer bottleneck, ByteBuffer[] modelParameters, String outputOpName) {
+    Interpreter interpreter = this.modelWrapper.getInterpreter();
+    int out_tid = -1;
+    try {
+      out_tid = interpreter.getOutputIndex(outputOpName);
+    }
+    catch (IllegalArgumentException e) {
+      out_tid = 0;
+    };
+    Tensor out_tenor = interpreter.getOutputTensor(out_tid);
+    int[] out_shape = out_tenor.shape();
+
+    ByteBuffer predictionsBuffer = ByteBuffer.allocateDirect(out_shape[1] * out_shape[2] * out_shape[3]);
+    predictionsBuffer.order(ByteOrder.nativeOrder());
+
+    Map<Integer, Object> outputs = new TreeMap<>();
+    outputs.put(0, predictionsBuffer);
+
+    Object[] inputs = new Object[modelParameters.length + 1];
+    inputs[0] = bottleneck;
+    System.arraycopy(modelParameters, 0, inputs, 1, modelParameters.length);
+
+    modelWrapper.getInterpreter().runForMultipleInputsOutputs(inputs, outputs);
+    bottleneck.rewind();
+    for (ByteBuffer buffer : modelParameters) {
+      buffer.rewind();
+    }
+    predictionsBuffer.rewind();
+
+    return predictionsBuffer;
+  }
+
+  boolean outputImage() {
+    Interpreter interpreter = this.modelWrapper.getInterpreter();
+    Tensor out_tenor = interpreter.getOutputTensor(0);
+    DataType out_dtype = out_tenor.dataType();
+    return DataType.INT8 == out_dtype;
   }
 
   @Override

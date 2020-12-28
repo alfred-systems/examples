@@ -18,8 +18,11 @@ package org.tensorflow.lite.examples.transfer;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -74,6 +77,7 @@ public class CameraFragment extends Fragment {
   private static final LensFacing LENS_FACING = LensFacing.BACK;
 
   private TextureView viewFinder;
+  private TextureView viewDebug;
 
   private Integer viewFinderRotation = null;
 
@@ -179,8 +183,27 @@ public class CameraFragment extends Fragment {
           }
           inferenceBenchmark.endStage(imageId, "predict");
 
-          for (Prediction prediction : predictions) {
-            viewModel.setConfidence(prediction.getClassName(), prediction.getConfidence());
+          if (this.tlModel.uint8Model()) {
+
+          }
+          else {
+            for (Prediction prediction : predictions) {
+              viewModel.setConfidence(prediction.getClassName(), prediction.getConfidence());
+            }
+          }
+
+          Rect drawArea = new Rect(0, 0, 200, 50);
+          Canvas canvas = viewDebug.lockCanvas(drawArea);
+          if (canvas != null) {
+            Paint mypaint = new Paint();
+            mypaint.setTextSize(20f);
+            mypaint.setColor(Color.GREEN);
+            canvas.drawText("HI HI", 0, 0, mypaint);
+            viewDebug.unlockCanvasAndPost(canvas);
+            Log.d("canvas_test", "hi hi");
+          }
+          else {
+            Log.d("canvas_test", "is null");
           }
         }
 
@@ -313,6 +336,8 @@ public class CameraFragment extends Fragment {
 
     viewFinder = getActivity().findViewById(R.id.view_finder);
     viewFinder.post(this::startCamera);
+    viewDebug = getActivity().findViewById(R.id.view_debug);
+//    viewDebug.post(this::startCamera);
   }
 
   @Override

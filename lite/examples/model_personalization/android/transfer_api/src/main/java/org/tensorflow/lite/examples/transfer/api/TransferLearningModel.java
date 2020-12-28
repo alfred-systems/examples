@@ -50,10 +50,18 @@ public final class TransferLearningModel implements Closeable {
   public static class Prediction {
     private final String className;
     private final float confidence;
+    private final ByteBuffer image;
 
     public Prediction(String className, float confidence) {
       this.className = className;
       this.confidence = confidence;
+      this.image = null;
+    }
+
+    public Prediction(String className, ByteBuffer image) {
+      this.className = className;
+      this.image = image;
+      this.confidence = -1;
     }
 
     public String getClassName() {
@@ -339,6 +347,10 @@ public final class TransferLearningModel implements Closeable {
    * @return predictions sorted by confidence decreasing. Can be null if model is terminating.
    */
   public Prediction[] predict(float[] image) {
+    return predict(image, null);
+  }
+
+  public Prediction[] predict(float[] image, String uint8_output_op) {
     checkNotTerminating();
     inferenceLock.lock();
 
@@ -355,24 +367,44 @@ public final class TransferLearningModel implements Closeable {
 
       ByteBuffer bottleneck = bottleneckModel.generateBottleneck(imageBuffer, inferenceBottleneck);
 
-      float[] confidences;
-      parameterLock.readLock().lock();
-      try {
-        confidences = inferenceModel.runInference(bottleneck, modelParameters);
-      } finally {
-        parameterLock.readLock().unlock();
-      }
+      if (uint8_output_op == null) {
+        float[] confidences;
+        parameterLock.readLock().lock();
+        try {
+          confidences = inferenceModel.runInference(bottleneck, modelParameters);
+        } finally {
+          parameterLock.readLock().unlock();
+        }
 
-      Prediction[] predictions = new Prediction[classes.size()];
-      for (int classIdx = 0; classIdx < classes.size(); classIdx++) {
-        predictions[classIdx] = new Prediction(classesByIdx[classIdx], confidences[classIdx]);
-      }
+        Prediction[] predictions = new Prediction[classes.size()];
+        for (int classIdx = 0; classIdx < classes.size(); classIdx++) {
+          predictions[classIdx] = new Prediction(classesByIdx[classIdx], confidences[classIdx]);
+        }
 
-      Arrays.sort(predictions, (a, b) -> -Float.compare(a.confidence, b.confidence));
-      return predictions;
+        Arrays.sort(predictions, (a, b) -> -Float.compare(a.confidence, b.confidence));
+        return predictions;
+      }
+      else {
+        ByteBuffer confidences;
+        parameterLock.readLock().lock();
+        try {
+          confidences = inferenceModel.runInference(bottleneck, modelParameters, uint8_output_op);
+        } finally {
+          parameterLock.readLock().unlock();
+        }
+
+        Prediction[] predictions = new Prediction[1];
+        predictions[0] = new Prediction("ProcessImage", confidences);
+
+        return predictions;
+      }
     } finally {
       inferenceLock.unlock();
     }
+  }
+
+  public boolean uint8Model() {
+    return this.inferenceModel.outputImage();
   }
 
   /**

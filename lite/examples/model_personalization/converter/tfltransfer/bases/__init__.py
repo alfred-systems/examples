@@ -14,4 +14,5 @@
 """Shortcuts for base model configurations."""
 
 from .mobilenetv2_base import MobileNetV2Base
-from .saved_model_base import SavedModelBase
+from .saved_model_base import SavedModelBase, SavedModelBaseUint8
+from .image_preproc_base import ImagePreprocessBase

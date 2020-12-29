@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import pdb
 import shutil
 import tempfile
 
@@ -38,23 +39,29 @@ class KerasModelHead(object):
   taken into account.
   """
 
-  def __init__(self, keras_model):
+  def __init__(self, keras_model, uint8_output=False):
     # Convert Keras model to SavedModel.
     saved_model_dir = tempfile.mkdtemp('tflite-transfer-keras-model')
-    keras_model.save(saved_model_dir, save_format='tf')
+    print(F"saved_model_dir: {saved_model_dir}")
+    # keras_model.save(saved_model_dir, save_format='tf')
+    # tf.saved_model.save(keras_model, saved_model_dir)
+    tf.keras.models.save_model(keras_model, saved_model_dir, include_optimizer=False, save_traces=True)
+    self.uint8_output = uint8_output
 
     # Pre-fetch some information about the model.
     loaded_model = tf.saved_model.load(
         saved_model_dir, tags=[tf.saved_model.SERVING])
     self._predict_signature = loaded_model.signatures['serving_default']
-
-    input_def = next(self._predict_signature.inputs.values().__iter__())
-    self._input_shape = tuple(
-        dim.size for dim in input_def.tensor_shape.dim[1:])
+    
+    # input_def = next(self._predict_signature.inputs.values().__iter__())
+    # self._input_shape = tuple(
+    #     dim.size for dim in input_def.tensor_shape.dim[1:])
+    
+    self._input_shape = self._predict_signature.inputs[0].shape.as_list()
 
     variables = keras_model.variables
     self._variable_names = [variable.name for variable in variables]
-    self._initial_params = [variable.eval() for variable in variables]
+    self._initial_params = [variable.numpy() for variable in variables]
     trainable_variables = keras_model.trainable_variables
     self._trainable_variable_names = [
         variable.name for variable in trainable_variables
@@ -64,10 +71,10 @@ class KerasModelHead(object):
         saved_model_dir, tags=[tf.saved_model.SERVING])
     self._eval_signature = loaded_model.signatures['serving_default']
 
-    if len(self._predict_signature.inputs) != 1:
-      raise ValueError('Only single-input head models are supported')
-    if len(self._predict_signature.outputs) != 1:
-      raise ValueError('Only single-output head models are supported')
+    # if len(self._predict_signature.inputs) != 1:
+    #   raise ValueError(f'Only single-input head models are supported: {self._predict_signature.inputs}')
+    # if len(self._predict_signature.outputs) != 1:
+    #   raise ValueError('Only single-output head models are supported')
 
     # Freeze the model.
     self._frozen_graph_def = self._freeze_keras_saved_model(saved_model_dir)
@@ -97,6 +104,10 @@ class KerasModelHead(object):
         name=scope,
         input_map={input_name: bottleneck},
         return_elements=[output_name])[0]
+    
+    if self.uint8_output:
+      output = tf.cast(output * 255, tf.uint8)
+    
     variable_tensors = [
         tfv1.get_default_graph().get_tensor_by_name(scope + '/' + name)
         for name in self._variable_names
@@ -199,7 +210,7 @@ class KerasModelHead(object):
     graph_def_file_name = os.path.join(temp_dir, 'frozen.pb')
     output_names = [
         utils.tensor_to_op_name(output.name)
-        for output in self._eval_signature.outputs.values()
+        for output in self._eval_signature.outputs
     ]
 
     freeze_graph.freeze_graph(
@@ -214,7 +225,7 @@ class KerasModelHead(object):
         clear_devices=True,
         initializer_nodes='',
         input_saved_model_dir=saved_model_dir,
-        saved_model_tags='eval')
+        saved_model_tags='serve')
 
     const_graph_def = tfv1.GraphDef()
     with open(graph_def_file_name, 'rb') as graph_def_file:

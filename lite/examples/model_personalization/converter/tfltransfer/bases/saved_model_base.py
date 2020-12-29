@@ -66,3 +66,13 @@ class SavedModelBase(quantizable_base.QuantizableBase):
   def bottleneck_shape(self):
     """Reads the shape of the bottleneck produced by the model."""
     return self._bottleneck_shape
+
+
+class SavedModelBaseUint8(SavedModelBase):
+  
+  def prepare_converter(self):
+    """Prepares an initial configuration of a TFLiteConverter."""
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        self._model_dir, signature_keys=[self._signature_key], tags=[self._tag])
+    converter.inference_input_type = tf.uint8
+    return converter

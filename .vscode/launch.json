@@ -14,6 +14,17 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "test_py_low_light_filter_head",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/lite/examples/model_personalization/converter/tfltransfer/heads/low_light_filter_head.py",
+            "args": [
+                
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

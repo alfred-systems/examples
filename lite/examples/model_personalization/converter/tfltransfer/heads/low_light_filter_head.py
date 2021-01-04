@@ -62,6 +62,15 @@ class LowLightFilterHead(object):
     """
     logits, variables, _ = self._mapping(bottleneck, scope)
     predictions = tf.cast(tf.clip_by_value(logits * 255, 0, 255), tf.uint8)
+    predictions_g = tf.cast(tf.clip_by_value(logits * 255 * 1.2, 0, 255), tf.uint8)
+    predictions_a_pad = tf.cast(tf.clip_by_value(logits * 255 * 99, 0, 255), tf.uint8)
+    
+    predictions = tf.concat([
+      predictions_a_pad,
+      predictions,
+      predictions_g,
+      predictions,
+    ], axis=-1)
     return predictions, variables
 
   def train(self, bottleneck, labels, scope='head'):
@@ -88,17 +97,45 @@ class LowLightFilterHead(object):
           loss, train_variables, stop_gradients=train_variables)
     return loss, gradients, train_variables
 
-  def _mapping(self, bottleneck, scope):
+  def py_train(self, bottleneck, labels, scope='head'):
+    """
+    Tensorflow 1.0 version of training loop for verifiy result correctness
+    Args:
+      bottleneck: tensor containing input bottlenecks.
+      labels: tensor containing one-hot ground truth labels.
+      scope: name of the scope to load the model into.
+
+    Returns:
+      (loss tensor, list of variable gradients, list of variable placeholders)
+    """
+    logits, train_variables, flat_bottleneck = self._mapping(bottleneck, scope, use_var=True)
+    with tf.name_scope(scope + '/loss'):
+      loss = self._sobel_loss(logits) * -1
+    
+    with tf.name_scope(scope + '/backprop'):
+      # gradients = tf.gradients(
+      #     loss, train_variables, stop_gradients=train_variables)
+      adam = tfv1.train.AdamOptimizer(learning_rate=0.01)
+      grads = adam.compute_gradients(loss, var_list=train_variables)
+      optimize_op = adam.apply_gradients(grads)
+    return loss, optimize_op, logits, train_variables
+
+  def _mapping(self, bottleneck, scope, use_var=False):
     """Appends the forward pass of the model."""
     with tfv1.variable_scope(scope):
-      a = tfv1.placeholder(
-          tf.float32,
-          shape=(),
-          name='placeholder_a')
-      b = tfv1.placeholder(
-          tf.float32, shape=(), name='placeholder_b')
-      c = tfv1.placeholder(
-          tf.float32, shape=(), name='placeholder_c')
+      if use_var:
+        a = tf.Variable(0.05, trainable=True)
+        b = tf.Variable(0.2, trainable=True)
+        c = tf.Variable(0.65, trainable=True)
+      else:
+        a = tfv1.placeholder(
+            tf.float32,
+            shape=(),
+            name='placeholder_a')
+        b = tfv1.placeholder(
+            tf.float32, shape=(), name='placeholder_b')
+        c = tfv1.placeholder(
+            tf.float32, shape=(), name='placeholder_c')
       
       g = tf.reduce_sum(bottleneck * tf.constant([[[[0.29900, 0.58700, 0.11400]]]]), axis=-1, keepdims=True)
       r = tf.math.log(g * 5.0 + tf.clip_by_value(a, 1e-6, 1e10)) * b + c
@@ -128,8 +165,8 @@ class LowLightFilterHead(object):
       strides=[1, 1, 1, 1],
       padding='SAME'
     )
-    x_edge = tf.reduce_sum(tf.abs(filtered_x))
-    y_edge = tf.reduce_sum(tf.abs(filtered_y))
+    x_edge = tf.reduce_mean(tf.abs(filtered_x))
+    y_edge = tf.reduce_mean(tf.abs(filtered_y))
     return x_edge + y_edge
 
   def generate_initial_params(self):
@@ -159,3 +196,26 @@ class LowLightFilterHead(object):
   def train_requires_flex(self):
     """Whether the generated training model requires Flex support."""
     return True
+
+
+def test_py_train():
+  tf.compat.v1.disable_eager_execution()
+  sess = tf.compat.v1.Session()
+
+  with sess.as_default():
+    dummy_img_holder = tfv1.placeholder(shape=[1, 256, 256, 3], dtype=tf.float32, name='input')
+    ll_filter = LowLightFilterHead(1, [256, 256, 3])
+    loss, optimize_op, logits, train_variables = ll_filter.py_train(dummy_img_holder, None)
+    sess.run(tf.compat.v1.global_variables_initializer())
+    
+    fake_img = np.random.uniform(low=0.0, high=1.0, size=[1, 256, 256, 3]).astype(np.float32)
+
+    for _ in range(10):
+      loss_val, _ = sess.run([loss, optimize_op], feed_dict={
+        dummy_img_holder: fake_img
+      })
+      print('loss: ', loss_val)
+
+
+if __name__ == "__main__":
+    test_py_train()

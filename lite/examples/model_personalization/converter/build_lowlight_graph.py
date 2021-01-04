@@ -1,9 +1,13 @@
+import os
+import numpy as np
 from loguru import logger
+
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from tensorflow.keras.regularizers import l2
 from tensorflow.python.keras.engine.input_layer import InputLayer
+
 from tfltransfer import bases
 from tfltransfer import heads
 from tfltransfer import optimizers
@@ -91,7 +95,7 @@ def export_transfer_model(h=256, w=256):
     # sess = tf.compat.v1.Session()
 
     # with sess.as_default():
-    base = bases.ImagePreprocessBase((1, 256, 256, 3), type=None)
+    base = bases.ImagePreprocessBase((1, h, w, 3), type=None)
     
     # z = tf.zeros([1, 256, 256, 3], dtype=tf.float32)
     # head_model = tf.keras.Sequential([
@@ -115,11 +119,77 @@ def export_transfer_model(h=256, w=256):
     converter.convert_and_save('low_light_filter_head')
 
 
+def test_tflite_ll_filter(dir_path):
+    train_head = tf.lite.Interpreter(model_path=os.path.join(dir_path, "train_head.tflite"), num_threads=2)
+    train_head.allocate_tensors()
+    inputs = train_head.get_input_details()
+    
+    default_value = {
+        'head/placeholder_a': np.array(0.05, dtype=np.float32),
+        'head/placeholder_b': np.array(0.21, dtype=np.float32),
+        'head/placeholder_c': np.array(0.65, dtype=np.float32),
+    }
+    for i in inputs:
+        print(i)
+        if i['name'] in default_value:
+            train_head.set_tensor(i['index'], default_value[i['name']])
+        else:
+            init_val = np.random.uniform(low=0, high=1, size=i['shape']).astype(i['dtype'])
+            train_head.set_tensor(i['index'], init_val)
+    
+    train_head.invoke()
+    outputs = train_head.get_output_details()
+    for o in outputs:
+        print(o['name'], train_head.get_tensor(o['index']))
+    
+
+    print('=' * 100)
+    for t in [t for t in train_head.get_tensor_details() if t['index'] > 45]:
+        print(t)
+
+
+def test_tflite_adam(dir_path):
+    train_head = tf.lite.Interpreter(model_path=os.path.join(dir_path, "optimizer.tflite"), num_threads=2)
+    train_head.allocate_tensors()
+    inputs = train_head.get_input_details()
+    
+    default_value = {
+        'm_0': np.array(0, dtype=np.float32),
+        'm_1': np.array(0, dtype=np.float32),
+        'm_2': np.array(0, dtype=np.float32),
+        'v_0': np.array(0, dtype=np.float32),
+        'v_1': np.array(0, dtype=np.float32),
+        'v_2': np.array(0, dtype=np.float32),
+        
+        'current_val_0': np.array(0.05, dtype=np.float32),
+        'current_val_1': np.array(0.21, dtype=np.float32),
+        'current_val_2': np.array(0.65, dtype=np.float32),
+        'grad_0': np.array(0.34545362, dtype=np.float32),
+        'grad_1': np.array(-0.6004103, dtype=np.float32),
+        'grad_2': np.array(-0.06237793, dtype=np.float32),
+    }
+    for i in inputs:
+        print(i)
+        if i['name'] in default_value:
+            train_head.set_tensor(i['index'], default_value[i['name']])
+        else:
+            init_val = np.random.uniform(low=0, high=1, size=i['shape']).astype(i['dtype'])
+            train_head.set_tensor(i['index'], init_val)
+    
+    train_head.invoke()
+    outputs = train_head.get_output_details()
+    for o in outputs:
+        print(o['name'], train_head.get_tensor(o['index']))
+
+
 if __name__ == "__main__":
     
     with logger.catch(reraise=True):
         # f = LLFilter()
         # z = tf.zeros([1, 64, 64, 3])
         # f(z)
-        export_transfer_model()
+        
         # demo()
+        export_transfer_model(h=480, w=640)
+        # test_tflite_ll_filter('/Users/ronzhu/Documents/examples/lite/examples/model_personalization/converter/low_light_filter_head')
+        # test_tflite_adam('/Users/ronzhu/Documents/examples/lite/examples/model_personalization/converter/low_light_filter_head')

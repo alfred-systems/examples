@@ -21,7 +21,7 @@ import java.nio.ByteBuffer;
 /**
  * A wrapper for TFLite model that generates bottlenecks from images.
  */
-class LiteBottleneckModel implements Closeable {
+class LiteBottleneckModel implements Closeable, ModelUtil {
   private static final int FLOAT_BYTES = 4;
 
   private final LiteModelWrapper modelWrapper;
@@ -59,5 +59,10 @@ class LiteBottleneckModel implements Closeable {
   @Override
   public void close() {
     modelWrapper.close();
+  }
+
+  @Override
+  public LiteModelWrapper getModelWrapper() {
+    return modelWrapper;
   }
 }

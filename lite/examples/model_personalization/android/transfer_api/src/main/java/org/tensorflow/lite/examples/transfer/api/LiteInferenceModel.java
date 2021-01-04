@@ -25,15 +25,19 @@ import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.TreeMap;
 
-class LiteInferenceModel implements Closeable {
+class LiteInferenceModel implements Closeable, ModelUtil {
   private static final int FLOAT_BYTES = 4;
 
   private final LiteModelWrapper modelWrapper;
   private final int numClasses;
+  private int[] outputShape;
 
   LiteInferenceModel(LiteModelWrapper modelWrapper, int numClasses) {
     this.modelWrapper = modelWrapper;
     this.numClasses = numClasses;
+
+    Interpreter interpreter = this.modelWrapper.getInterpreter();
+    outputShape = interpreter.getOutputTensor(0).shape();
   }
 
   float[] runInference(ByteBuffer bottleneck, ByteBuffer[] modelParameters) {
@@ -63,18 +67,10 @@ class LiteInferenceModel implements Closeable {
   }
 
   ByteBuffer runInference(ByteBuffer bottleneck, ByteBuffer[] modelParameters, String outputOpName) {
-    Interpreter interpreter = this.modelWrapper.getInterpreter();
-    int out_tid = -1;
-    try {
-      out_tid = interpreter.getOutputIndex(outputOpName);
-    }
-    catch (IllegalArgumentException e) {
-      out_tid = 0;
-    };
-    Tensor out_tenor = interpreter.getOutputTensor(out_tid);
-    int[] out_shape = out_tenor.shape();
 
-    ByteBuffer predictionsBuffer = ByteBuffer.allocateDirect(out_shape[1] * out_shape[2] * out_shape[3]);
+    ByteBuffer predictionsBuffer = ByteBuffer.allocateDirect(
+      outputShape[0] * outputShape[1] * outputShape[2] * outputShape[3]
+    );
     predictionsBuffer.order(ByteOrder.nativeOrder());
 
     Map<Integer, Object> outputs = new TreeMap<>();
@@ -98,11 +94,24 @@ class LiteInferenceModel implements Closeable {
     Interpreter interpreter = this.modelWrapper.getInterpreter();
     Tensor out_tenor = interpreter.getOutputTensor(0);
     DataType out_dtype = out_tenor.dataType();
-    return DataType.INT8 == out_dtype;
+    return DataType.UINT8 == out_dtype;
   }
 
   @Override
   public void close() {
     modelWrapper.close();
+  }
+
+  @Override
+  public LiteModelWrapper getModelWrapper() {
+    return this.modelWrapper;
+  }
+
+  @Override
+  public void setOutputShape(int[] input_shape) {
+    this.outputShape[0] = input_shape[0];
+    this.outputShape[1] = input_shape[1];
+    this.outputShape[2] = input_shape[2];
+    this.outputShape[3] = 4;
   }
 }

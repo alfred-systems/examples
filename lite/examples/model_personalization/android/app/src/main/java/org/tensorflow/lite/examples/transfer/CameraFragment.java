@@ -54,6 +54,7 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.snackbar.Snackbar;
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -153,7 +154,8 @@ public class CameraFragment extends Fragment {
         final String imageId = UUID.randomUUID().toString();
 
         inferenceBenchmark.startStage(imageId, "preprocess");
-        float[] rgbImage = prepareCameraImage(yuvCameraImageToBitmap(imageProxy), rotationDegrees);
+        Bitmap src_image = yuvCameraImageToBitmap(imageProxy);
+        float[] rgbImage = prepareCameraImage(src_image, rotationDegrees);
         inferenceBenchmark.endStage(imageId, "preprocess");
 
         // Adding samples is also handled by inference thread / use case.
@@ -184,7 +186,24 @@ public class CameraFragment extends Fragment {
           inferenceBenchmark.endStage(imageId, "predict");
 
           if (this.tlModel.uint8Model()) {
+            Prediction pred_image = predictions[0];
+            ByteBuffer image_buffer = pred_image.getImageBuffer();
 
+            int model_img_w = TransferLearningModelWrapper.IMAGE_SIZE;
+            int model_img_h = (int)Math.round((double)model_img_w * TransferLearningModelWrapper.IMAGE_RATIO);
+            Rect drawArea = new Rect(0, 0, model_img_w, model_img_h);
+            Canvas canvas = viewDebug.lockCanvas(drawArea);
+
+            if (canvas != null) {
+              Bitmap bmp = Bitmap.createBitmap(model_img_w, model_img_h, Bitmap.Config.ARGB_8888);
+              bmp.copyPixelsFromBuffer(image_buffer);
+              Matrix rotateMtx = new Matrix();
+              rotateMtx.postRotate(90f);
+              Bitmap bmp_rotate = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), rotateMtx, true);
+              canvas.drawBitmap(bmp_rotate, 0f, 0f, null);
+              viewDebug.unlockCanvasAndPost(canvas);
+              Log.d("canvas_test", "hi hi");
+            }
           }
           else {
             for (Prediction prediction : predictions) {
@@ -192,19 +211,23 @@ public class CameraFragment extends Fragment {
             }
           }
 
-          Rect drawArea = new Rect(0, 0, 200, 50);
-          Canvas canvas = viewDebug.lockCanvas(drawArea);
-          if (canvas != null) {
-            Paint mypaint = new Paint();
-            mypaint.setTextSize(20f);
-            mypaint.setColor(Color.GREEN);
-            canvas.drawText("HI HI", 0, 0, mypaint);
-            viewDebug.unlockCanvasAndPost(canvas);
-            Log.d("canvas_test", "hi hi");
-          }
-          else {
-            Log.d("canvas_test", "is null");
-          }
+//          Rect drawArea = new Rect(0, 0, 200, 50);
+//          Canvas canvas = viewDebug.lockCanvas(drawArea);
+//
+//          if (canvas != null) {
+//            canvas.drawColor(0);
+//
+//            Paint mypaint = new Paint();
+//            mypaint.setTextSize(20f);
+//            mypaint.setColor(Color.GREEN);
+//            mypaint.setStyle(Paint.Style.STROKE);
+//            canvas.drawText("HI HI", 0, 50, mypaint);
+//            viewDebug.unlockCanvasAndPost(canvas);
+//            Log.d("canvas_test", "hi hi");
+//          }
+//          else {
+//            Log.d("canvas_test", "is null");
+//          }
         }
 
         inferenceBenchmark.finish(imageId);
@@ -293,8 +316,11 @@ public class CameraFragment extends Fragment {
   @Override
   public void onCreate(Bundle bundle) {
     super.onCreate(bundle);
+    int model_img_w = TransferLearningModelWrapper.IMAGE_SIZE;
+    int model_img_h = (int)Math.round((double)model_img_w * TransferLearningModelWrapper.IMAGE_RATIO);
 
     tlModel = new TransferLearningModelWrapper(getActivity());
+    tlModel.setInputSize(model_img_w, model_img_h);
     viewModel = ViewModelProviders.of(this).get(CameraFragmentViewModel.class);
     viewModel.setTrainBatchSize(tlModel.getTrainBatchSize());
   }
@@ -430,22 +456,23 @@ public class CameraFragment extends Fragment {
    * to size expected by the model and adjusting for camera rotation.
    */
   private static float[] prepareCameraImage(Bitmap bitmap, int rotationDegrees)  {
-    int modelImageSize = TransferLearningModelWrapper.IMAGE_SIZE;
+    int width = TransferLearningModelWrapper.IMAGE_SIZE;
+    int height = (int)Math.round((double)width * TransferLearningModelWrapper.IMAGE_RATIO);
 
     Bitmap paddedBitmap = padToSquare(bitmap);
-    Bitmap scaledBitmap = Bitmap.createScaledBitmap(
-        paddedBitmap, modelImageSize, modelImageSize, true);
+    Bitmap scaledBitmap = Bitmap.createScaledBitmap(paddedBitmap, width, height, true);
 
     Matrix rotationMatrix = new Matrix();
     rotationMatrix.postRotate(rotationDegrees);
-    Bitmap rotatedBitmap = Bitmap.createBitmap(
-        scaledBitmap, 0, 0, modelImageSize, modelImageSize, rotationMatrix, false);
 
-    float[] normalizedRgb = new float[modelImageSize * modelImageSize * 3];
+//    Bitmap rotatedBitmap = Bitmap.createBitmap(
+//        scaledBitmap, 0, 0, width, height, rotationMatrix, false);
+
+    float[] normalizedRgb = new float[width * height * 3];
     int nextIdx = 0;
-    for (int y = 0; y < modelImageSize; y++) {
-      for (int x = 0; x < modelImageSize; x++) {
-        int rgb = rotatedBitmap.getPixel(x, y);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        int rgb = scaledBitmap.getPixel(x, y);
 
         float r = ((rgb >> 16) & LOWER_BYTE_MASK) * (1 / 255.f);
         float g = ((rgb >> 8) & LOWER_BYTE_MASK) * (1 / 255.f);
@@ -464,8 +491,10 @@ public class CameraFragment extends Fragment {
     int width = source.getWidth();
     int height = source.getHeight();
 
-    int paddingX = width < height ? (height - width) / 2 : 0;
-    int paddingY = height < width ? (width - height) / 2 : 0;
+//    int paddingX = width < height ? (height - width) / 2 : 0;
+//    int paddingY = height < width ? (width - height) / 2 : 0;
+    int paddingX = 0;
+    int paddingY = 0;
     Bitmap paddedBitmap = Bitmap.createBitmap(
         width + 2 * paddingX, height + 2 * paddingY, Config.ARGB_8888);
     Canvas canvas = new Canvas(paddedBitmap);

@@ -33,7 +33,8 @@ import org.tensorflow.lite.examples.transfer.api.TransferLearningModel.Predictio
  * run-once API of {@link TransferLearningModel}.
  */
 public class TransferLearningModelWrapper implements Closeable {
-  public static final int IMAGE_SIZE = 224;
+  public static final int IMAGE_SIZE = 480;
+  public static final double IMAGE_RATIO = 4f / 3;
 
   private final TransferLearningModel model;
 
@@ -66,6 +67,9 @@ public class TransferLearningModelWrapper implements Closeable {
 
   // This method is thread-safe, but blocking.
   public Prediction[] predict(float[] image) {
+    if (model.uint8Model()) {
+      return model.predict(image, "");
+    }
     return model.predict(image);
   }
 
@@ -98,5 +102,10 @@ public class TransferLearningModelWrapper implements Closeable {
 
   public boolean uint8Model() {
     return this.model.uint8Model();
+  }
+
+  public void setInputSize(int image_width, int image_height) {
+    int[] shape = {1, image_width, image_height, 3};
+    model.resizeImageInput(shape);
   }
 }

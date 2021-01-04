@@ -15,10 +15,13 @@ limitations under the License.
 
 package org.tensorflow.lite.examples.transfer.api;
 
+import android.util.Log;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 import java.util.ArrayList;
@@ -71,6 +74,8 @@ public final class TransferLearningModel implements Closeable {
     public float getConfidence() {
       return confidence;
     }
+
+    public ByteBuffer getImageBuffer() { return this.image; }
   }
 
   private static class TrainingSample {
@@ -97,7 +102,7 @@ public final class TransferLearningModel implements Closeable {
   private static final int NUM_THREADS =
       Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
 
-  private final int[] bottleneckShape;
+  private int[] bottleneckShape;
 
   private final Map<String, Integer> classes;
   private final String[] classesByIdx;
@@ -121,7 +126,7 @@ public final class TransferLearningModel implements Closeable {
   private ByteBuffer[] nextOptimizerState;
 
   // Where to store training inputs.
-  private final ByteBuffer trainingBatchBottlenecks;
+  private ByteBuffer trainingBatchBottlenecks;
   private final ByteBuffer trainingBatchClasses;
 
   // A zero-filled buffer of the same size as `trainingBatchClasses`.
@@ -300,6 +305,7 @@ public final class TransferLearningModel implements Closeable {
                         trainingBatchClasses,
                         modelParameters,
                         modelGradients);
+                Log.d("training: loss", "" + loss);
                 totalLoss += loss;
                 numBatchesProcessed++;
 
@@ -311,6 +317,36 @@ public final class TransferLearningModel implements Closeable {
                     nextOptimizerState);
 
                 ByteBuffer[] swapBufferArray;
+
+                List<Float> tmp1 = new ArrayList<>();
+                for (ByteBuffer fp_buffer: modelParameters) {
+                  FloatBuffer fb = ((ByteBuffer) fp_buffer.rewind()).asFloatBuffer();
+                  tmp1.add(fb.get(0));
+                }
+
+                List<Float> tmp2 = new ArrayList<>();
+                for (ByteBuffer fp_buffer: modelGradients) {
+                  FloatBuffer fb = ((ByteBuffer) fp_buffer.rewind()).asFloatBuffer();
+                  tmp2.add(fb.get(0));
+                }
+
+                List<Float> tmp3 = new ArrayList<>();
+                for (ByteBuffer fp_buffer: optimizerState) {
+                  FloatBuffer fb = ((ByteBuffer) fp_buffer.rewind()).asFloatBuffer();
+                  tmp3.add(fb.get(0));
+                }
+
+                List<Float> tmp4 = new ArrayList<>();
+                for (ByteBuffer fp_buffer: nextModelParameters) {
+                  FloatBuffer fb = ((ByteBuffer) fp_buffer.rewind()).asFloatBuffer();
+                  tmp4.add(fb.get(0));
+                }
+
+                List<Float> tmp5 = new ArrayList<>();
+                for (ByteBuffer fp_buffer: nextOptimizerState) {
+                  FloatBuffer fb = ((ByteBuffer) fp_buffer.rewind()).asFloatBuffer();
+                  tmp5.add(fb.get(0));
+                }
 
                 // Swap optimizer state with its next version.
                 swapBufferArray = optimizerState;
@@ -559,6 +595,21 @@ public final class TransferLearningModel implements Closeable {
     }
     for (int idx = 0; idx < bufSize % chunkSize; idx++) {
       buffer.put((byte) 0);
+    }
+  }
+
+  public void resizeImageInput(int[] new_shape) {
+    if (inferenceModel.outputImage()) {
+      bottleneckModel.resizeInput(0, new_shape);
+      inferenceModel.resizeInput(0, new_shape);
+      trainHeadModel.resizeInput(0, new_shape);
+      bottleneckShape = new_shape;
+      int bottlenectSize = numBottleneckFeatures() * FLOAT_BYTES;
+      inferenceBottleneck = allocateBuffer(bottlenectSize);
+      trainingBatchBottlenecks = allocateBuffer(getTrainBatchSize() * bottlenectSize);
+    }
+    else {
+      throw new RuntimeException("Models without image output not support this operation!");
     }
   }
 }

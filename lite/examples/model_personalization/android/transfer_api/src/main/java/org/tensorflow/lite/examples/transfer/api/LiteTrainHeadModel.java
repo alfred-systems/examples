@@ -26,7 +26,7 @@ import org.tensorflow.lite.Tensor;
 /**
  * A wrapper for TFLite model that calculates the gradients of trainable layers.
  */
-class LiteTrainHeadModel implements Closeable {
+class LiteTrainHeadModel implements Closeable, ModelUtil {
   private static final int FLOAT_BYTES = 4;
 
   private LiteModelWrapper modelWrapper;
@@ -129,5 +129,10 @@ class LiteTrainHeadModel implements Closeable {
   @Override
   public void close() {
     modelWrapper.close();
+  }
+
+  @Override
+  public LiteModelWrapper getModelWrapper() {
+    return modelWrapper;
   }
 }

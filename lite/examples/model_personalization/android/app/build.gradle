@@ -46,7 +46,7 @@ dependencies {
     implementation('org.tensorflow:tensorflow-lite:0.0.0-nightly') { changing = true }
     // If you want to use custom Keras models from TFLiteTransferConverter
     // Python API, uncomment the following Flex AAR dependency.
-    // implementation('org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly') { changing = true }
+     implementation('org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly') { changing = true }
 
     // https://developer.android.com/jetpack/androidx/releases/camera
     def camerax_version = "1.0.0-alpha04"
@@ -85,4 +85,4 @@ task downloadModel(type: DefaultTask) {
     }
 }
 
-preBuild.dependsOn downloadModel
+//preBuild.dependsOn downloadModel

@@ -46,13 +46,18 @@ public class LiteOptimizerModel implements Closeable {
       ByteBuffer[] optimizerState,
       ByteBuffer[] newParams,
       ByteBuffer[] newOptimizerState) {
-    Object[] inputs = new Object[currentParams.length + gradients.length];
+
+    Object[] inputs = new Object[currentParams.length + gradients.length + optimizerState.length];
     System.arraycopy(currentParams, 0, inputs, 0, currentParams.length);
     System.arraycopy(gradients, 0, inputs, currentParams.length, gradients.length);
+    System.arraycopy(optimizerState, 0, inputs, currentParams.length + gradients.length, optimizerState.length);
 
     Map<Integer, Object> outputs = new TreeMap<>();
     for (int paramIdx = 0; paramIdx < newParams.length; paramIdx++) {
       outputs.put(paramIdx, newParams[paramIdx]);
+    }
+    for (int paramIdx = 0; paramIdx < newOptimizerState.length; paramIdx++) {
+      outputs.put(paramIdx + newParams.length, newOptimizerState[paramIdx]);
     }
 
     modelWrapper.getInterpreter().runForMultipleInputsOutputs(inputs, outputs);

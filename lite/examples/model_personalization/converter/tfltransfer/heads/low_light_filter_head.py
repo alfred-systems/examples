@@ -63,7 +63,7 @@ class LowLightFilterHead(object):
     logits, variables, _ = self._mapping(bottleneck, scope)
     predictions = tf.cast(tf.clip_by_value(logits * 255, 0, 255), tf.uint8)
     predictions_g = tf.cast(tf.clip_by_value(logits * 255 * 1.2, 0, 255), tf.uint8)
-    predictions_a_pad = tf.cast(tf.clip_by_value(logits * 255 * 99, 0, 255), tf.uint8)
+    predictions_a_pad = tf.cast(tf.clip_by_value(logits + 3000, 0, 255), tf.uint8)
     
     predictions = tf.concat([
       predictions,
@@ -149,7 +149,7 @@ class LowLightFilterHead(object):
       
       g = tf.reduce_sum(bottleneck * tf.constant([[[[0.29900, 0.58700, 0.11400]]]]), axis=-1, keepdims=True)
       r = tf.math.log(g * 5.0 + tf.clip_by_value(a, 1e-6, 1e10)) * b + c
-      r = tf.clip_by_value(r, 0, 255)
+      r = tf.clip_by_value(r, 0, 1)
       return r, [a, b, c], bottleneck
   
   def _sobel_loss(self, x):

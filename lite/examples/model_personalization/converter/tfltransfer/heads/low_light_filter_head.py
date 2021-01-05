@@ -66,11 +66,21 @@ class LowLightFilterHead(object):
     predictions_a_pad = tf.cast(tf.clip_by_value(logits * 255 * 99, 0, 255), tf.uint8)
     
     predictions = tf.concat([
-      predictions_a_pad,
       predictions,
       predictions_g,
       predictions,
+      predictions_a_pad,
     ], axis=-1)
+    # predictions = tf.pad(
+    #   predictions, 
+    #   [[0, 0], [0, 0], [0, 0], [0, 2]], 
+    #   constant_values=1
+    # )
+    # predictions = tf.pad(
+    #   predictions, 
+    #   [[0, 0], [0, 0], [0, 0], [0, 1]], 
+    #   constant_values=255
+    # )
     return predictions, variables
 
   def train(self, bottleneck, labels, scope='head'):
@@ -165,6 +175,10 @@ class LowLightFilterHead(object):
       strides=[1, 1, 1, 1],
       padding='SAME'
     )
+
+    filtered_x = tf.clip_by_value(filtered_x, -.5, .5)
+    filtered_y = tf.clip_by_value(filtered_y, -.5, .5)
+    
     x_edge = tf.reduce_mean(tf.abs(filtered_x))
     y_edge = tf.reduce_mean(tf.abs(filtered_y))
     return x_edge + y_edge
@@ -182,9 +196,12 @@ class LowLightFilterHead(object):
 
     @tf.function(input_signature=[tf.TensorSpec(shape=(), dtype=tf.float32)])
     def model_func(zero):
-      a = tf.constant(0.05)
-      b = tf.constant(0.21)
-      c = tf.constant(0.65)
+      a = tf.constant(0.2)
+      b = tf.constant(0.25)
+      c = tf.constant(0.4)
+      # a = tf.constant(0.05)
+      # b = tf.constant(0.21)
+      # c = tf.constant(0.65)
       return a, b, c
 
     return model_func

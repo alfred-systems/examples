@@ -79,6 +79,7 @@ public class CameraFragment extends Fragment {
 
   private TextureView viewFinder;
   private TextureView viewDebug;
+  private TextureView viewFirst;
 
   private Integer viewFinderRotation = null;
 
@@ -149,6 +150,18 @@ public class CameraFragment extends Fragment {
     CameraX.bindToLifecycle(this, preview, imageAnalysis);
   }
 
+  private void drawBitmap(TextureView view, Bitmap bitmap) {
+    int model_img_w = TransferLearningModelWrapper.IMAGE_SIZE;
+    int model_img_h = (int)Math.round((double)model_img_w * TransferLearningModelWrapper.IMAGE_RATIO);
+    Rect drawArea = new Rect(0, 0, model_img_w, model_img_h);
+    Canvas canvas = view.lockCanvas(drawArea);
+
+    if (canvas != null) {
+      canvas.drawBitmap(bitmap, 0f, 0f, null);
+      view.unlockCanvasAndPost(canvas);
+    }
+  }
+
   private final ImageAnalysis.Analyzer inferenceAnalyzer =
       (imageProxy, rotationDegrees) -> {
         final String imageId = UUID.randomUUID().toString();
@@ -166,6 +179,7 @@ public class CameraFragment extends Fragment {
           inferenceBenchmark.startStage(imageId, "addSample");
           try {
             tlModel.addSample(rgbImage, sampleClass).get();
+
           } catch (ExecutionException e) {
             throw new RuntimeException("Failed to add sample to model", e.getCause());
           } catch (InterruptedException e) {
@@ -174,6 +188,28 @@ public class CameraFragment extends Fragment {
 
           viewModel.increaseNumSamples(sampleClass);
           inferenceBenchmark.endStage(imageId, "addSample");
+
+          inferenceBenchmark.startStage(imageId, "predict");
+          Prediction[] predictions = tlModel.predict(rgbImage);
+          if (predictions == null) {
+            return;
+          }
+          else {
+            Prediction pred_image = predictions[0];
+            ByteBuffer image_buffer = pred_image.getImageBuffer();
+
+            int model_img_w = TransferLearningModelWrapper.IMAGE_SIZE;
+            int model_img_h = (int)Math.round((double)model_img_w * TransferLearningModelWrapper.IMAGE_RATIO);
+
+            Bitmap bmp = Bitmap.createBitmap(model_img_w, model_img_h, Bitmap.Config.ARGB_8888);
+            bmp.copyPixelsFromBuffer(image_buffer);
+            Matrix rotateMtx = new Matrix();
+            rotateMtx.postRotate(90f);
+            Bitmap bmp_rotate = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), rotateMtx, true);
+
+            drawBitmap(viewFirst, bmp_rotate);
+          }
+          inferenceBenchmark.endStage(imageId, "predict");
 
         } else {
           // We don't perform inference when adding samples, since we should be in capture mode
@@ -202,7 +238,6 @@ public class CameraFragment extends Fragment {
               Bitmap bmp_rotate = Bitmap.createBitmap(bmp, 0, 0, bmp.getWidth(), bmp.getHeight(), rotateMtx, true);
               canvas.drawBitmap(bmp_rotate, 0f, 0f, null);
               viewDebug.unlockCanvasAndPost(canvas);
-              Log.d("canvas_test", "hi hi");
             }
           }
           else {
@@ -363,6 +398,7 @@ public class CameraFragment extends Fragment {
     viewFinder = getActivity().findViewById(R.id.view_finder);
     viewFinder.post(this::startCamera);
     viewDebug = getActivity().findViewById(R.id.view_debug);
+    viewFirst = getActivity().findViewById(R.id.view_first);
 //    viewDebug.post(this::startCamera);
   }
 
